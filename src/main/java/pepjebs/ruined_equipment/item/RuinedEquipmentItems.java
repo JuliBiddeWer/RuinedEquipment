@@ -1,5 +1,6 @@
 package pepjebs.ruined_equipment.item;
 
+import net.minecraft.component.type.DyedColorComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
@@ -79,21 +80,34 @@ public class RuinedEquipmentItems {
     public static Map<Item, Item> getVanillaItemMap() {
         Map<Item, Item> vanillaItemMap = new HashMap<>();
         for (Item i : RuinedEquipmentItems.SUPPORTED_VANILLA_ITEMS) {
-            vanillaItemMap.put(Registries.ITEM.get(
-                    new Identifier(RuinedEquipmentMod.MOD_ID,
-                            RuinedEquipmentMod.RUINED_PREFIX + Registries.ITEM.getId(i).getPath())), i);
+            vanillaItemMap.put(
+                    i,
+                    Registries.ITEM.get(
+                            Identifier.of(
+                                    RuinedEquipmentMod.MOD_ID,
+                                    RuinedEquipmentMod.RUINED_PREFIX + Registries.ITEM.getId(i).getPath()
+                            )
+                    )
+            );
         }
         return vanillaItemMap;
     }
 
-    public static Map<Item, Item> getVanillaDyeableItemMap() {
-        Map<Item, Item> vanillaDyeableMap = new HashMap<>();
-        for (Map.Entry<Item, Item> i : RuinedEquipmentItems.getVanillaItemMap().entrySet()) {
-            if (Registries.ITEM.getId(i.getValue()).getPath().contains("leather")) {
-                vanillaDyeableMap.put(i.getKey(), i.getValue());
+    public static Map<Item, Integer> getVanillaDyeableItemMap() {
+        Map<Item, Integer> vanillaDyeableMap = new HashMap<>();
+
+        for (Map.Entry<Item, Item> entry : getVanillaItemMap().entrySet()) {
+            Item keyItem   = entry.getKey();
+            Item valueItem = entry.getValue();
+            String path    = Registries.ITEM.getId(valueItem).getPath();
+
+            if (path.contains("leather")) {
+                vanillaDyeableMap.put(keyItem, DyedColorComponent.DEFAULT_COLOR);
             }
         }
+
         return vanillaDyeableMap;
     }
+
 
 }

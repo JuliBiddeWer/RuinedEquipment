@@ -16,6 +16,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import pepjebs.ruined_equipment.component.ModDataComponentType;
 import pepjebs.ruined_equipment.config.RuinedEquipmentConfig;
 import pepjebs.ruined_equipment.item.RuinedAshesItem;
 import pepjebs.ruined_equipment.item.RuinedDyeableEquipmentItem;
@@ -43,6 +44,7 @@ public class RuinedEquipmentMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        ModDataComponentType.registerDataComponentTypes();
         if(FabricLoader.getInstance().isModLoaded("cloth-config")) {
             AutoConfig.register(RuinedEquipmentConfig.class, JanksonConfigSerializer::new);
             CONFIG = AutoConfig.getConfigHolder(RuinedEquipmentConfig.class).getConfig();
@@ -50,7 +52,7 @@ public class RuinedEquipmentMod implements ModInitializer {
 
         RUINED_CRAFT_REPAIR_RECIPE = Registry.register(
                 Registries.RECIPE_SERIALIZER,
-                new Identifier(MOD_ID, "ruined_repair"),
+                Identifier.of(MOD_ID, "ruined_repair"),
                 new SpecialRecipeSerializer<>(RuinedEquipmentCraftRepair::new));
 
         Map<Item, Item> vanillaItemMap = new HashMap<>();
@@ -64,10 +66,10 @@ public class RuinedEquipmentMod implements ModInitializer {
         }
         for (Map.Entry<Item, Item> item : vanillaItemMap.entrySet()) {
             String vanillaItemIdPath = Registries.ITEM.getId(item.getValue()).getPath();
-            Registry.register(Registries.ITEM, new Identifier(MOD_ID,
+            Registry.register(Registries.ITEM,  Identifier.of(MOD_ID,
                     RUINED_PREFIX + vanillaItemIdPath), item.getKey());
         }
-        RUINED_ASHES_ITEM = Registry.register(Registries.ITEM, new Identifier(MOD_ID,
+        RUINED_ASHES_ITEM = Registry.register(Registries.ITEM, Identifier.of(MOD_ID,
                 "ruined_item_ashes"), new RuinedAshesItem(new Item.Settings().maxCount(1)));
 
         ServerTickEvents.START_SERVER_TICK.register((MinecraftServer server) -> {
