@@ -80,7 +80,7 @@ public class RuinedEquipmentItems {
         Map<Item, Item> vanillaItemMap = new HashMap<>();
         for (Item i : RuinedEquipmentItems.SUPPORTED_VANILLA_ITEMS) {
             vanillaItemMap.put(Registries.ITEM.get(
-                    new Identifier(RuinedEquipmentMod.MOD_ID,
+                    Identifier.of(RuinedEquipmentMod.MOD_ID,
                             RuinedEquipmentMod.RUINED_PREFIX + Registries.ITEM.getId(i).getPath())), i);
         }
         return vanillaItemMap;

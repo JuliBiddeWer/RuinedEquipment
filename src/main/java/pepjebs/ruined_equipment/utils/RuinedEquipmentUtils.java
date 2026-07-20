@@ -1,15 +1,21 @@
 package pepjebs.ruined_equipment.utils;
 
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ItemEnchantmentsComponent;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Pair;
+import net.minecraft.component.ComponentType;
 import pepjebs.ruined_equipment.RuinedEquipmentMod;
 import pepjebs.ruined_equipment.item.RuinedEquipmentItems;
 
@@ -18,16 +24,33 @@ import java.util.stream.Collectors;
 
 public class RuinedEquipmentUtils {
 
-    public static String RUINED_ENCHTS_TAG = "RuinedEnchantments";
     public static String RUINED_ITEM_KEY_TAG = "ItemKey";
 
-    public static boolean ruinedItemHasEnchantment(ItemStack ruinedItem, Enchantment enchantment) {
-        if (ruinedItem.getNbt() == null) return false;
-        String tagString = ruinedItem.getNbt().getString(RUINED_ENCHTS_TAG);
-        Map<Enchantment, Integer> enchantMap = RuinedEquipmentUtils.processEncodedEnchantments(tagString);
-        if (enchantMap == null) return false;
-        for (Enchantment e : enchantMap.keySet()) {
-            if (e == enchantment) return true;
+    public static final Map<java.util.UUID, Pair<ItemStack, EquipmentSlot>> PENDING_BREAKING = new HashMap<>();
+
+    public static NbtCompound getCustomData(ItemStack stack) {
+        NbtComponent component = stack.get(DataComponentTypes.CUSTOM_DATA);
+        return component != null ? component.copyNbt() : new NbtCompound();
+    }
+
+    public static void setCustomData(ItemStack stack, NbtCompound nbt) {
+        if (nbt == null || nbt.isEmpty()) {
+            stack.remove(DataComponentTypes.CUSTOM_DATA);
+        } else {
+            stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
+        }
+    }
+
+    public static <T> void copyComponentIfPresent(ItemStack src, ItemStack dst, ComponentType<T> type) {
+        T value = src.get(type);
+        if (value != null) dst.set(type, value);
+    }
+
+    public static boolean ruinedItemHasEnchantment(ItemStack ruinedItem, RegistryKey<Enchantment> enchantmentKey) {
+        ItemEnchantmentsComponent enchantments = ruinedItem.getEnchantments();
+        if (enchantments.isEmpty()) return false;
+        for (RegistryEntry<Enchantment> entry : enchantments.getEnchantments()) {
+            if (entry.matchesKey(enchantmentKey)) return true;
         }
         return false;
     }
@@ -40,7 +63,7 @@ public class RuinedEquipmentUtils {
         if (RuinedEquipmentMod.CONFIG != null) {
             try {
                 String[] itemId = RuinedEquipmentMod.CONFIG.empowermentSmithingItem.split(":");
-                return Registries.ITEM.get(new Identifier(itemId[0], itemId[1]));
+                return Registries.ITEM.get(Identifier.of(itemId[0], itemId[1]));
             } catch (Exception e) {
                 RuinedEquipmentMod.LOGGER.warn(e.getMessage());
             }
@@ -80,43 +103,36 @@ public class RuinedEquipmentUtils {
     public static ItemStack generateRepairedItemForAnvilByDamage(
             ItemStack leftStack,
             int targetDamage){
-        boolean isMaxEnchant = leftStack.getNbt() != null &&
-                leftStack.getNbt().contains(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG)
-                && leftStack.getNbt().getBoolean(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG);
+        NbtCompound custom = getCustomData(leftStack);
+        boolean isMaxEnchant = custom.contains(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG)
+                && custom.getBoolean(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG);
 
         Item vanillaItem = getRepairItemForItemStack(leftStack);
         ItemStack repaired = new ItemStack(vanillaItem);
-        NbtCompound tag = leftStack.getOrCreateNbt();
-        if (tag.contains(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG)) {
-            tag.remove(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG);
-        }
-        String encodedEnch = tag.getString(RUINED_ENCHTS_TAG);
-        if (!encodedEnch.isEmpty()) tag.remove(RUINED_ENCHTS_TAG);
-        Map<Enchantment, Integer> enchantMap = RuinedEquipmentUtils.processEncodedEnchantments(encodedEnch);
-        if (enchantMap != null) {
-            for (Map.Entry<Enchantment, Integer> enchant : enchantMap.entrySet()) {
-                if (isMaxEnchant) {
-                    repaired.addEnchantment(enchant.getKey(), enchant.getKey().getMaxLevel());
-                } else {
-                    repaired.addEnchantment(enchant.getKey(), enchant.getValue());
-                }
+
+        copyComponentIfPresent(leftStack, repaired, DataComponentTypes.CUSTOM_NAME);
+        copyComponentIfPresent(leftStack, repaired, DataComponentTypes.LORE);
+        copyComponentIfPresent(leftStack, repaired, DataComponentTypes.DYED_COLOR);
+        copyComponentIfPresent(leftStack, repaired, DataComponentTypes.BANNER_PATTERNS);
+        copyComponentIfPresent(leftStack, repaired, DataComponentTypes.BASE_COLOR);
+
+        custom.remove(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG);
+        custom.remove(RUINED_ITEM_KEY_TAG);
+        setCustomData(repaired, custom);
+
+        ItemEnchantmentsComponent enchantments = leftStack.getEnchantments();
+        if (!enchantments.isEmpty()) {
+            ItemEnchantmentsComponent.Builder builder =
+                    new ItemEnchantmentsComponent.Builder(ItemEnchantmentsComponent.DEFAULT);
+            for (RegistryEntry<Enchantment> enchant : enchantments.getEnchantments()) {
+                int level = isMaxEnchant ? enchant.value().getMaxLevel() : enchantments.getLevel(enchant);
+                builder.add(enchant, level);
             }
+            repaired.set(DataComponentTypes.ENCHANTMENTS, builder.build());
         }
-        repaired.setNbt(repaired.getOrCreateNbt().copyFrom(tag));
+
         repaired.setDamage(targetDamage);
         return repaired;
-    }
-
-    public static Map<Enchantment, Integer> processEncodedEnchantments(String encodedEnchants) {
-        if (encodedEnchants.isEmpty()) return null;
-        Map<Enchantment, Integer> enchants = new HashMap<>();
-        for (String encodedEnchant : encodedEnchants.split(",")) {
-            String[] enchantItem = encodedEnchant.split(">");
-            String[] enchantKey = enchantItem[0].split(":");
-            int enchantLevel = Integer.parseInt(enchantItem[1]);
-            enchants.put(Registries.ENCHANTMENT.get(new Identifier(enchantKey[0], enchantKey[1])), enchantLevel);
-        }
-        return enchants.isEmpty() ? null : enchants;
     }
 
     public static List<Identifier> getParsedBlocklistForRuinedAshesItems() {
@@ -128,7 +144,7 @@ public class RuinedEquipmentUtils {
                             .split(";"))
                     .map(p -> {
                         String[] idParts = p.split(":");
-                        return new Identifier(idParts[0], idParts[1]);
+                        return Identifier.of(idParts[0], idParts[1]);
                     })
                     .toList();
         } catch(Exception e) {
@@ -141,10 +157,14 @@ public class RuinedEquipmentUtils {
             ServerPlayerEntity serverPlayer,
             ItemStack breakingStack,
             boolean forceSet) {
-        if (RuinedEquipmentMod.CONFIG != null && RuinedEquipmentMod.CONFIG.skipEmptyNBTEquipmentBreaks
-                && (breakingStack.getNbt() == null || breakingStack.getNbt().getKeys().stream()
-                    .filter(k -> k.compareTo("Damage") != 0).collect(Collectors.toSet()).size() == 0)) {
-            return;
+        if (RuinedEquipmentMod.CONFIG != null && RuinedEquipmentMod.CONFIG.skipEmptyNBTEquipmentBreaks) {
+            boolean hasCustom = breakingStack.contains(DataComponentTypes.CUSTOM_NAME)
+                    || breakingStack.contains(DataComponentTypes.LORE)
+                    || breakingStack.contains(DataComponentTypes.CUSTOM_DATA)
+                    || breakingStack.contains(DataComponentTypes.ENCHANTMENTS)
+                    || breakingStack.contains(DataComponentTypes.DYED_COLOR)
+                    || breakingStack.contains(DataComponentTypes.BANNER_PATTERNS);
+            if (!hasCustom) return;
         }
         for (Map.Entry<Item, Item> itemMap : RuinedEquipmentItems.getVanillaItemMap().entrySet()) {
             if (isVanillaItemStackBreaking(breakingStack, itemMap.getValue())) {
@@ -168,18 +188,25 @@ public class RuinedEquipmentUtils {
             boolean forceSet,
             ItemStack ruinedStack
             ) {
-        NbtCompound breakingNBT = breakingStack.getOrCreateNbt();
-        if (breakingNBT.contains("Damage")) breakingNBT.remove("Damage");
-        if (breakingNBT.contains("RepairCost")) breakingNBT.remove("RepairCost");
-        // Set enchantment NBT data
-        NbtCompound enchantTag = getNbtForEnchantments(breakingStack, ruinedStack);
-        if (enchantTag != null) breakingNBT.copyFrom(enchantTag);
-        if (breakingNBT.contains("Enchantments")) breakingNBT.remove("Enchantments");
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.CUSTOM_NAME);
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.LORE);
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.DYED_COLOR);
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.BANNER_PATTERNS);
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.BASE_COLOR);
+        copyComponentIfPresent(breakingStack, ruinedStack, DataComponentTypes.CUSTOM_DATA);
+
+        ItemEnchantmentsComponent enchantments = breakingStack.getEnchantments();
+        if (!enchantments.isEmpty()) {
+            ruinedStack.set(DataComponentTypes.ENCHANTMENTS, enchantments);
+        }
+
         if (ruinedStack.getItem() == RuinedEquipmentMod.RUINED_ASHES_ITEM) {
             Identifier breakingId = Registries.ITEM.getId(breakingStack.getItem());
-            breakingNBT.putString(RUINED_ITEM_KEY_TAG, breakingId.toString());
+            NbtCompound custom = getCustomData(ruinedStack);
+            custom.putString(RUINED_ITEM_KEY_TAG, breakingId.toString());
+            setCustomData(ruinedStack, custom);
         }
-        ruinedStack.setNbt(breakingNBT);
+
         // Force set will place the Ruined item in hand
         if (forceSet) {
             int idx = 0;
@@ -195,9 +222,9 @@ public class RuinedEquipmentUtils {
 
     public static Identifier getItemKeyIdFromItemStack(ItemStack ruinedItemAshes) {
         assert ruinedItemAshes.getItem() == RuinedEquipmentMod.RUINED_ASHES_ITEM;
-        if (ruinedItemAshes.getNbt() == null || !ruinedItemAshes.getNbt().contains(RUINED_ITEM_KEY_TAG)) return null;
-        return new Identifier(ruinedItemAshes.getNbt().getString(RUINED_ITEM_KEY_TAG));
-
+        NbtCompound custom = getCustomData(ruinedItemAshes);
+        if (!custom.contains(RUINED_ITEM_KEY_TAG)) return null;
+        return Identifier.of(custom.getString(RUINED_ITEM_KEY_TAG));
     }
 
     public static Map<Identifier, Identifier> getParsedRuinedItemsAshesRepairItems() {
@@ -210,8 +237,8 @@ public class RuinedEquipmentUtils {
                     .map(s -> {
                         String[] modItem = s.split("/")[0].split(":");
                         String[] modRepair = s.split("/")[1].split(":");
-                        Identifier modItemId = new Identifier(modItem[0], modItem[1]);
-                        Identifier modRepairId = new Identifier(modRepair[0], modRepair[1]);
+                        Identifier modItemId = Identifier.of(modItem[0], modItem[1]);
+                        Identifier modRepairId = Identifier.of(modRepair[0], modRepair[1]);
                         return new Pair<>(modItemId, modRepairId);
                     })
                     .collect(Collectors.toMap(Pair::getLeft, Pair::getRight));
@@ -219,21 +246,6 @@ public class RuinedEquipmentUtils {
             RuinedEquipmentMod.LOGGER.warn("Ill-formed Config field ruinedItemsAshesRepairItems");
             return null;
         }
-    }
-
-    public static NbtCompound getNbtForEnchantments(ItemStack breakingStack, ItemStack ruinedStack) {
-        Set<String> enchantmentStrings = new HashSet<>();
-        for (Map.Entry<Enchantment, Integer> ench : EnchantmentHelper.get(breakingStack).entrySet()) {
-            String enchantString = Registries.ENCHANTMENT.getId(ench.getKey())+">"+ench.getValue();
-            enchantmentStrings.add(enchantString);
-        }
-        if (!enchantmentStrings.isEmpty()) {
-            NbtCompound tag = ruinedStack.getNbt();
-            if (tag == null) tag = new NbtCompound();
-            tag.putString(RUINED_ENCHTS_TAG, String.join(",", enchantmentStrings));
-            return tag;
-        }
-        return null;
     }
 
     public static boolean isVanillaItemStackBreaking(ItemStack breakingStack, Item vanillaItem) {

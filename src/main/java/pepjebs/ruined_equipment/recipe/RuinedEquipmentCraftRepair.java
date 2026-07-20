@@ -1,13 +1,14 @@
 package pepjebs.ruined_equipment.recipe;
 
-import net.minecraft.inventory.RecipeInputInventory;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.recipe.RecipeSerializer;
 import net.minecraft.recipe.SpecialCraftingRecipe;
 import net.minecraft.recipe.book.CraftingRecipeCategory;
-import net.minecraft.registry.DynamicRegistryManager;
+import net.minecraft.recipe.input.CraftingRecipeInput;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.World;
 import pepjebs.ruined_equipment.RuinedEquipmentMod;
@@ -30,13 +31,13 @@ public class RuinedEquipmentCraftRepair extends SpecialCraftingRecipe {
     }
 
     @Override
-    public boolean matches(RecipeInputInventory inv, World world) {
+    public boolean matches(CraftingRecipeInput inv, World world) {
         if (RuinedEquipmentMod.CONFIG != null && !RuinedEquipmentMod.CONFIG.enableCraftingGridRuinedRepair)
             return false;
         ArrayList<ItemStack> craftingStacks = new ArrayList<>();
-        for(int i = 0; i < inv.size(); i++) {
-            if (!inv.getStack(i).isEmpty()) {
-                craftingStacks.add(inv.getStack(i));
+        for(int i = 0; i < inv.getSize(); i++) {
+            if (!inv.getStackInSlot(i).isEmpty()) {
+                craftingStacks.add(inv.getStackInSlot(i));
             }
         }
         if (craftingStacks.size() == 2) {
@@ -70,12 +71,12 @@ public class RuinedEquipmentCraftRepair extends SpecialCraftingRecipe {
     }
 
     @Override
-    public ItemStack craft(RecipeInputInventory inv, DynamicRegistryManager registryManager) {
+    public ItemStack craft(CraftingRecipeInput inv, RegistryWrapper.WrapperLookup registryManager) {
         ItemStack repairingItem = ItemStack.EMPTY;
         ItemStack ruinedItem = ItemStack.EMPTY;
         ItemStack t;
-        for(int i = 0; i < inv.size(); i++) {
-            t = inv.getStack(i);
+        for(int i = 0; i < inv.getSize(); i++) {
+            t = inv.getStackInSlot(i);
             if (!t.isEmpty()) {
                 if (RuinedEquipmentUtils.isRuinedItem(t.getItem())) {
                     ruinedItem = t;
@@ -92,7 +93,7 @@ public class RuinedEquipmentCraftRepair extends SpecialCraftingRecipe {
             targetDamage = (int) ((1.0 - REPAIR_MODIFIER) * newStack.getMaxDamage());
         } else if (repairingItem != ItemStack.EMPTY) {
             newStack = repairingItem.copy();
-            if (newStack.getNbt() != null) newStack.getNbt().remove("Enchantments");
+            newStack.remove(DataComponentTypes.ENCHANTMENTS);
             targetDamage =
                     newStack.getDamage() - (int)(REPAIR_MODIFIER * newStack.getMaxDamage());
         } else {

@@ -1,13 +1,16 @@
 package pepjebs.ruined_equipment.mixin;
 
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.LoreComponent;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.*;
-import net.minecraft.nbt.*;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.recipe.Ingredient;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.screen.*;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.Nullable;
@@ -55,7 +58,7 @@ public abstract class RuinedAnvilScreenHandlerMixin extends ForgingScreenHandler
             Item vanillaItem = RuinedEquipmentUtils.getRepairItemForItemStack(leftStack);
             Item empowermentItem = RuinedEquipmentUtils.getEmpowermentApplicationItem();
             Identifier vanillaItemId = Registries.ITEM.getId(vanillaItem);
-            int vanillaMaxDamage = vanillaItem.getMaxDamage() - 1;
+            int vanillaMaxDamage = new ItemStack(vanillaItem).getMaxDamage() - 1;
             // Check right stack for matching repair item
             Ingredient repairIngredient = null;
             var ashesRepairItems = RuinedEquipmentUtils.getParsedRuinedItemsAshesRepairItems();
@@ -64,7 +67,7 @@ public abstract class RuinedAnvilScreenHandlerMixin extends ForgingScreenHandler
                 if (repairingItemId == null) return;
                 repairIngredient = Ingredient.ofItems(Registries.ITEM.get(repairingItemId));
             } else if (vanillaItem instanceof ArmorItem) {
-                repairIngredient = ((ArmorItem) vanillaItem).getMaterial().getRepairIngredient();
+                repairIngredient = ((ArmorItem) vanillaItem).getMaterial().value().repairIngredient().get();
             } else if (vanillaItem instanceof ToolItem) {
                 repairIngredient = ((ToolItem) vanillaItem).getMaterial().getRepairIngredient();
             } else if (vanillaItem == Items.SHIELD) {
@@ -93,66 +96,49 @@ public abstract class RuinedAnvilScreenHandlerMixin extends ForgingScreenHandler
                 this.repairItemUsage = 0;
             } else if (rightStack.getItem() == empowermentItem &&
                     (RuinedEquipmentMod.CONFIG == null || RuinedEquipmentMod.CONFIG.enableSmithingRuinedEmpowered)) {
-                var ruinedItem = leftStack.copy();
-                NbtCompound tag = ruinedItem.getNbt();
-                if (tag == null) tag = new NbtCompound();
-                if (tag.contains(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG))
-                    tag.remove(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG);
-                tag.putBoolean(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG, true);
-                ruinedItem.setNbt(tag);
+                ItemStack ruinedItem = leftStack.copy();
+                NbtCompound custom = RuinedEquipmentUtils.getCustomData(ruinedItem);
+                custom.putBoolean(RuinedEquipmentMod.RUINED_MAX_ENCHT_TAG, true);
+                RuinedEquipmentUtils.setCustomData(ruinedItem, custom);
                 this.repairItemUsage = 1;
                 output = ruinedItem;
             } else if (rightStack.getItem() == Items.NAME_TAG) {
                 if (RuinedEquipmentMod.CONFIG != null && !RuinedEquipmentMod.CONFIG.enableLoreSetWithNameTag) {
                     return;
                 }
-                var lores = new NbtList();
                 List<String> nameTagLoreLines = new ArrayList<>();
-                try {
-                    var nameTagNbt = rightStack.getNbt();
-                    var nameTagTextNbt = nameTagNbt.getCompound("display").getString("Name");
-                    var nameTagText = NbtHelper.fromNbtProviderString(nameTagTextNbt).getString("text");
-                    var splitNameTagText = nameTagText.split(" ");
-                    nameTagLoreLines = chunkStringArray(splitNameTagText, 25);
-                    lores.addAll(
-                            nameTagLoreLines.stream()
-                                    .map(s -> {
-                                        NbtCompound c = new NbtCompound();
-                                        c.putString("text", s);
-                                        return NbtString.of(NbtHelper.toFormattedString(c));
-                                    })
-                                    .toList());
-                } catch (Exception _e) {
-                    // Doesnt work :)
+                Text nameTagText = rightStack.get(DataComponentTypes.CUSTOM_NAME);
+                if (nameTagText != null) {
+                    try {
+                        String nameTagString = nameTagText.getString();
+                        String[] splitNameTagText = nameTagString.split(" ");
+                        nameTagLoreLines = chunkStringArray(splitNameTagText, 25);
+                    } catch (Exception _e) {
+                        // Doesn't work :)
+                    }
                 }
-                if (!lores.isEmpty()) {
-                    var existingDisplay =
-                            leftStack.getNbt() != null && leftStack.getSubNbt("display") != null
-                                    ? leftStack.getSubNbt("display") : null;
-                    if (existingDisplay == null) {
-                        existingDisplay = new NbtCompound();
-                    } else {
-                        var existingLores = existingDisplay.contains("Lore") ?
-                                existingDisplay.getList("Lore", NbtElement.STRING_TYPE)
-                                : null;
-                        if (existingLores != null) {
-                            existingLores.addAll(lores);
-                            lores = existingLores;
-                        }
+                if (!nameTagLoreLines.isEmpty()) {
+                    List<Text> newLoreLines = new ArrayList<>();
+                    for (String s : nameTagLoreLines) {
+                        newLoreLines.add(Text.literal(s).formatted(Formatting.ITALIC).formatted(Formatting.GRAY));
                     }
+                    List<Text> allLines = new ArrayList<>();
+                    LoreComponent existingLore = leftStack.get(DataComponentTypes.LORE);
+                    if (existingLore != null) allLines.addAll(existingLore.lines());
                     if (nameTagLoreLines.stream().anyMatch(t -> t.compareTo("clear") == 0)) {
-                        lores = new NbtList();
+                        allLines = new ArrayList<>();
+                    } else {
+                        allLines.addAll(newLoreLines);
                     }
-                    existingDisplay.put("Lore", lores);
-                    leftStack.setSubNbt("display", existingDisplay);
+                    leftStack.set(DataComponentTypes.LORE, new LoreComponent(allLines));
                 }
                 output = leftStack;
                 this.repairItemUsage = 1;
             }
-            var setName =  (newItemName != null && newItemName.compareTo("") != 0);
+            boolean setName = (newItemName != null && newItemName.compareTo("") != 0);
             if (setName) {
                 output = (output == ItemStack.EMPTY) ? leftStack.copy() : output;
-                output.setCustomName(Text.of(newItemName));
+                output.set(DataComponentTypes.CUSTOM_NAME, Text.of(newItemName));
             }
             // Set the output
             if (!output.isEmpty()) {

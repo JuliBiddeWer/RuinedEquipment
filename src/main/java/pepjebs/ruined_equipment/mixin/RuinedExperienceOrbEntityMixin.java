@@ -38,9 +38,10 @@ public abstract class RuinedExperienceOrbEntityMixin {
             player.sendPickup((ExperienceOrbEntity)(Object)this, 1);
             if (this.amount > 0) {
                 Item vanillaItem = RuinedEquipmentUtils.getRepairItemForItemStack(handStack);
-                int repairAmount = getMendingRepairAmount(this.amount);
+                int maxDamage = new ItemStack(vanillaItem).getMaxDamage();
+                int repairAmount = Math.min(this.amount * 2, maxDamage);
                 ItemStack repaired = RuinedEquipmentUtils.generateRepairedItemForAnvilByDamage(
-                        handStack, vanillaItem.getMaxDamage() - repairAmount);
+                        handStack, Math.max(maxDamage - repairAmount, 0));
                 if (RuinedEquipmentMod.CONFIG != null && RuinedEquipmentMod.CONFIG.enableSetRuinedItemInHand) {
                     if (hand == Hand.MAIN_HAND) {
                         player.getInventory().main.set(player.getInventory().selectedSlot, repaired);
@@ -50,12 +51,8 @@ public abstract class RuinedExperienceOrbEntityMixin {
                 } else {
                     player.getInventory().offerOrDrop(repaired);
                 }
-                this.amount -= getMendingRepairCost(repairAmount);
+                this.amount -= repairAmount / 2;
             }
         }
     }
-
-    @Shadow abstract int getMendingRepairCost(int repairAmount);
-
-    @Shadow abstract int getMendingRepairAmount(int experienceAmount);
 }

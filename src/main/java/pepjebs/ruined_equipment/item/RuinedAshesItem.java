@@ -1,15 +1,15 @@
 package pepjebs.ruined_equipment.item;
 
-import net.minecraft.client.item.TooltipContext;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Item.TooltipContext;
+import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Rarity;
-import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import pepjebs.ruined_equipment.utils.RuinedEquipmentUtils;
 
@@ -21,12 +21,12 @@ public class RuinedAshesItem extends Item {
     }
 
     @Override
-    public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
-        super.appendTooltip(stack, world, tooltip, context);
+    public void appendTooltip(ItemStack stack, @Nullable TooltipContext context, List<Text> tooltip, TooltipType type) {
+        super.appendTooltip(stack, context, tooltip, type);
         Identifier id = RuinedEquipmentUtils.getItemKeyIdFromItemStack(stack);
         if (id == null) return;
-        Item item = Registries.ITEM .get(id);
-        if (stack.hasCustomName()) {
+        Item item = Registries.ITEM.get(id);
+        if (stack.contains(DataComponentTypes.CUSTOM_NAME)) {
             tooltip.add(Text.translatable(this.getTranslationKey()).formatted(Formatting.GRAY));
         }
         tooltip.add(Text.translatable(item.getTranslationKey(stack)).formatted(Formatting.GRAY));
@@ -36,10 +36,5 @@ public class RuinedAshesItem extends Item {
     @Override
     public boolean hasGlint(ItemStack stack) {
         return RuinedEquipmentItem.hasRuinedGlint(stack);
-    }
-
-    @Override
-    public Rarity getRarity(ItemStack stack) {
-        return RuinedEquipmentItem.getRuinedRarity(stack);
     }
 }
